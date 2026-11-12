@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# NOTE: this workflow has not been executed yet. It was written in a sandbox that
+# cannot download the Android NDK. Treat the first run as the test of the workflow.
+name: android
+
+on:
+  push:
+  pull_request:
+
+env:
+  NDK_VERSION: 27.2.12479018 # r27c
+  ANDROID_PLATFORM: android-31
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build/host -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+      - name: Build
+        run: cmake --build build/host
+      - name: Test
+        run: ctest --test-dir build/host --output-on-failure
+
+  ndk-platform:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - name: Configure (arm64-v8a)
+        run: |
+          cmake -S . -B build/android-arm64 -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM="$ANDROID_PLATFORM" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - name: Build
+        run: cmake --build build/android-arm64
+      - name: Check 16 KiB alignment of va_probe
+        run: |
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" -lW \
+            build/android-arm64/platform/android/va_probe | grep LOAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: va_probe-arm64-v8a
+          path: build/android-arm64/platform/android/va_probe
+
+  ndk-core:
+    # Expected to fail until the Phase 1 patch series is complete on the real NDK.
+    # The compile sweep log is the deliverable; see docs/STUBS.md.
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Fetch core and dependencies
+        run: tools/fetch_core.sh
+      - name: Apply patch series
+        run: tools/apply_patches.sh
+      - name: Install NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - name: Configure core (arm64-v8a)
+        run: |
+          cmake -S . -B build/android-core -G Ninja \
+            -DPS4DROID_BUILD_CORE=ON \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM="$ANDROID_PLATFORM" \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: Compile sweep of shadPS4 src/
+        run: python3 tools/standin/syntax_check.py build/android-core build/sweep 4
+      - name: Summarise
+        if: always()
+        run: |
+          cut -f1 build/sweep/results.tsv | sort | uniq -c
+          grep FAIL build/sweep/results.tsv || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ndk-compile-sweep
+          path: build/sweep
