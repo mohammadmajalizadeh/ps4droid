@@ -1,48 +1,54 @@
 # Progress
 
-Last updated: 2026-11-12 (end of Phase 0).
+Last updated: 2026-11-12 (Phase 1 partly done).
 
 ## Done
 
-- Phase 0: cloned and read shadPS4 `09f84a0e`, FEX `ab135df0`, Box64 `4dbba130`, and the existing ARM64 fork `zenithblue-oss/shadps4-arm64` `be6bc2e9`.
-- `docs/ARCHITECTURE.md`, `docs/TRANSLATOR_DECISION.md`, `docs/VULKAN_AUDIT.md`, `CLAUDE.md` written.
+- Phase 0: design documents (`ARCHITECTURE.md`, `TRANSLATOR_DECISION.md`, `VULKAN_AUDIT.md`), `CLAUDE.md`.
+- Phase 1, the part that needs no NDK:
+  - `core/shadPS4` added as a submodule pinned to upstream `09f84a0e`; `tools/fetch_core.sh` fetches its 45 dependencies.
+  - Stand-in AArch64 compile sweep of all 430 `src/` translation units: 409 compile unmodified. Full breakdown in `STUBS.md`.
+  - Patch series `core/patches/0001`–`0004` for the four real source failures; `tools/apply_patches.sh` applies it.
+  - Experiment E1 tool: `platform/android/probe/va_probe.cpp`, with a host test that simulates an occupied low address range. Passes on Linux x86-64; cross-compiles for AArch64.
+  - Top-level `CMakeLists.txt`, `platform/android/CMakeLists.txt`, CI workflow `.github/workflows/android.yml` (written, never executed).
 
 ## In progress
 
-- Nothing. Waiting for approval of the Phase 0 documents.
+- Phase 1 is **not complete**. It cannot be completed without the NDK.
 
-## Blocked on decisions (see `ARCHITECTURE.md` section 6)
+## Blocked
 
-1. Translator: FEXCore (recommended) or Box64.
-2. Vulkan floor: 1.3 (recommended) versus the 1.1 in the brief.
-3. Process model: in-process bionic with experiment E1 as the gate (recommended) or separate runtime.
-4. Use of prior art: reference only, cherry-pick MIT bridge files (recommended), or fork.
-5. Storage model: import into app-specific storage (recommended), SAF-backed VFS, or all-files access.
-6. Which test devices are available.
+- **Android NDK unavailable in the working environment** (`dl.google.com` denied by network policy, still denied after the user said it was allowed). Blocks: the real `arm64-v8a` build, every bionic finding, the link step, and running `va_probe` on a device.
+- No Android device or emulator is attached, so E1–E4 are all still open.
 
-## Not done in Phase 0, deliberately
+## Decisions taken
 
-- No code, no build, nothing run on a device or emulator.
-- The shadPS4 submodule has not been added to this repo yet; the pinned commit is recorded in `CLAUDE.md`. Adding it is the first step of Phase 1.
+The Phase 0 recommendations are in force because the user said to proceed without changing them: FEXCore; Vulkan 1.3 floor; in-process bionic gated on E1; cherry-pick MIT bridge files from the existing fork; import into app-specific storage. Nothing built so far depends on any of them, so they can still be changed at no cost. Test devices: still unknown.
+
+## Next steps, in order
+
+1. Run `.github/workflows/android.yml` (or the NDK commands in `CLAUDE.md`) and record the real results in `STUBS.md`.
+2. Run `va_probe` on a 39-bit and a 48-bit device, standalone and inside an app process (E1).
+3. Stage-0 host tools (`protoc`, `glslang`, font embedder) so the Android configure can generate sources (`STUBS.md` B3).
+4. NDK-built FFmpeg (`STUBS.md` B1).
+5. Full build and link of the core as a shared library; list undefined references.
 
 ## Open experiments
 
-| ID | Question | Phase | Blocks |
-|---|---|---|---|
-| E1 | Can the guest ranges be reserved inside an ART process on 39-bit and 48-bit devices? What already occupies the low 4 GiB? | 1 | Process model |
-| E2 | Do our SIGSEGV/SIGBUS handlers coexist with ART's `libsigchain` and FEXCore's delegator? | 3 | Signals design |
-| E3 | Anonymous `PROT_EXEC` JIT mappings on Android 12–16 across vendors | 3 | Translator |
-| E4 | Per-device Vulkan capability capture | 2 | Every "expected"/"unknown" cell in `VULKAN_AUDIT.md` |
+| ID | Question | Status |
+|---|---|---|
+| E1 | Can the guest ranges be reserved inside an ART process on 39-bit and 48-bit devices? | Tool written and host-tested; not run on Android |
+| E2 | Do our signal handlers coexist with ART's `libsigchain` and FEXCore? | Not started (Phase 3) |
+| E3 | Anonymous `PROT_EXEC` JIT mappings on Android 12–16 | Not started (Phase 3) |
+| E4 | Per-device Vulkan capability capture | Not started (Phase 2) |
 
-## Known gaps in the research
+## Known gaps
 
-- Adreno and Mali proprietary-driver columns in `VULKAN_AUDIT.md` are unverified.
-- Mesa data came from a GitHub mirror of `docs/features.txt`, not the canonical repository.
-- The second reported Android port (by "edeegg") was not located or read.
-- The number of HLE → guest callback call sites is not yet counted.
-- FEXCore has not been built against bionic by us.
-- Several Vulkan core features are requested without an audited guard (`VULKAN_AUDIT.md` section 3).
+- Everything listed under "What it does not prove" in `STUBS.md`.
+- The AArch64 signal-frame parsing in patch 0001 compiles but has never executed.
+- The CI workflow is untested.
+- Phase 0 gaps still stand: proprietary Adreno/Mali driver data unverified; guest-callback call sites uncounted; FEXCore not yet built for bionic.
 
 ## Known issues
 
-- None yet (no code).
+- A leftover scratch directory from an aborted first sweep exists outside the repo in the sandbox (`build/syntax`); it is not part of the project.

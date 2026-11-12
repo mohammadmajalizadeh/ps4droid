@@ -39,31 +39,51 @@ Pinned upstreams (update here and in `docs/PROGRESS.md` together):
 
 ## Build commands
 
-These are the intended commands. Nothing below has been run yet (Phase 0 produced documents only); Phase 1 replaces this note with verified output.
+Verified on a Linux x86-64 host (2026-11-12):
 
 ```sh
-# one-time
-git submodule update --init --recursive
+# fetch core/shadPS4 and its dependencies, then put our patch series on top
+tools/fetch_core.sh
+tools/apply_patches.sh
 
-# native core only (fast iteration)
-cmake -S . -B build/android-arm64 -G Ninja \
-  -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
-  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-31 \
-  -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build/android-arm64
+# host build and tests of our own code (currently the address-space probe)
+cmake -S . -B build/host -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake --build build/host
+ctest --test-dir build/host --output-on-failure
 
-# full app
-./gradlew :app:assembleDebug
-./gradlew :app:installDebug
-
-# translator unit tests (host-runnable under qemu-aarch64 or on device)
-ctest --test-dir build/android-arm64 -R translator --output-on-failure
-
-# device logs
-adb logcat -s ps4droid:V shadps4:V
+# stand-in AArch64 compile sweep of shadPS4 src/ (needs: pip install ziglang)
+cmake -S core/shadPS4 -B build/standin -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=$PWD/tools/standin/aarch64-linux-standin.cmake \
+  -DENABLE_DISCORD_RPC=OFF -DENABLE_UPDATER=OFF -DSDL_UNIX_CONSOLE_BUILD=ON \
+  -DFETCHCONTENT_SOURCE_DIR_FMT=$PWD/core/shadPS4/externals/fmt \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+python3 tools/standin/syntax_check.py build/standin build/sweep 2
 ```
 
-Toolchain: NDK r27 or newer, CMake 3.24+, Ninja, JDK 17, API 31 minimum, `-Wl,-z,max-page-size=16384` on every shared object.
+**Not yet run anywhere** (no NDK was available; see `docs/STUBS.md`):
+
+```sh
+# our code for Android
+cmake -S . -B build/android-arm64 -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-31 -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build/android-arm64
+
+# address-space probe on a device (experiment E1)
+adb push build/android-arm64/platform/android/va_probe /data/local/tmp/
+adb shell /data/local/tmp/va_probe
+
+# core for Android
+cmake -S . -B build/android-core -G Ninja -DPS4DROID_BUILD_CORE=ON  # plus the toolchain flags above
+```
+
+Toolchain: NDK r27c (27.2.12479018), CMake 3.24+, Ninja, JDK 17, API 31 minimum, `-Wl,-z,max-page-size=16384` on every shared object (set in the top-level `CMakeLists.txt`).
+
+## The submodule and the patch series
+
+- The superproject pins `core/shadPS4` to the **upstream** commit. Our changes are `core/patches/*.patch`, applied by `tools/apply_patches.sh` onto a local branch `ps4droid/android`.
+- To change the core: commit inside `core/shadPS4` on that branch, then `git -C core/shadPS4 format-patch -o ../patches <pinned-commit>` and commit the patch files.
+- Never `git add core/shadPS4` after patching: that would pin a commit nobody else can fetch. `.gitmodules` sets `ignore = all` for it so `git add -A` leaves the pin alone; check with `git ls-files -s core/shadPS4`.
 
 ## Working method
 
