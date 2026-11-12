@@ -22,6 +22,7 @@
 #include <vector>
 
 #include <sys/mman.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 
 #ifndef MAP_FIXED_NOREPLACE
@@ -131,6 +132,24 @@ uint64_t HighestMappablePage(size_t page) {
     return lo;
 }
 
+// First line of a small /proc or /sys text file, or "unreadable".
+std::string ReadFirstLine(const char* path) {
+    FILE* f = fopen(path, "re");
+    if (!f) {
+        return "unreadable";
+    }
+    char line[256] = {};
+    if (!fgets(line, sizeof(line), f)) {
+        line[0] = 0;
+    }
+    fclose(f);
+    std::string s = line;
+    while (!s.empty() && (s.back() == '\n' || s.back() == ' ')) {
+        s.pop_back();
+    }
+    return s;
+}
+
 int BitsFor(uint64_t highest) {
     int bits = 0;
     while (bits < 64 && (highest >> bits) != 0) {
@@ -191,8 +210,15 @@ uint64_t FirstFreeRun(const std::vector<Mapping>& maps, uint64_t begin, uint64_t
 std::string RunVaProbe() {
     std::string out;
     const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
-    Appendf(out, "va_probe v1\n");
+    Appendf(out, "va_probe v2\n");
     Appendf(out, "page_size: %zu\n", page);
+    struct utsname uts {};
+    if (uname(&uts) == 0) {
+        Appendf(out, "kernel: %s %s\n", uts.release, uts.machine);
+    }
+    Appendf(out, "meminfo: %s\n", ReadFirstLine("/proc/meminfo").c_str());
+    Appendf(out, "overcommit_memory: %s\n",
+            ReadFirstLine("/proc/sys/vm/overcommit_memory").c_str());
 
     const uint64_t highest = HighestMappablePage(page);
     Appendf(out, "highest_mappable: 0x%" PRIx64 " (%d-bit user address space)\n", highest,

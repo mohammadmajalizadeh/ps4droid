@@ -73,6 +73,10 @@ cmake --build build/android-arm64
 adb push build/android-arm64/platform/android/va_probe /data/local/tmp/
 adb shell /data/local/tmp/va_probe
 
+# static ARM64 probe without the NDK (runs from adb shell or Termux; verified to build, not run)
+python3 -m ziglang c++ -target aarch64-linux-musl -static -std=c++20 -O1 -DVA_PROBE_STANDALONE \
+  platform/android/probe/va_probe.cpp -o va_probe-arm64-static
+
 # core for Android
 cmake -S . -B build/android-core -G Ninja -DPS4DROID_BUILD_CORE=ON  # plus the toolchain flags above
 ```

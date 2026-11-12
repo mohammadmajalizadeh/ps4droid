@@ -121,6 +121,8 @@ Reading of this table: **on Turnip, every optional extension shadPS4 probes is e
 
 The app runs the E4 probe at startup and shows the tier with the specific missing items.
 
+**Our test device** is a Nothing Phone (3a) Pro: Snapdragon 7s Gen 3 with an Adreno 810 (per public spec sheets). That puts it in tier 1 only if a Turnip build with Adreno 8xx support loads on it; community sources report 8xx support from Mesa 26.0 onward and say older Turnip builds do not load on 8xx parts. Neither Turnip nor the stock driver has been checked on this device. [U] until E4.
+
 ## 7. Open items
 
 1. E4 captures for every device we own (blocks all "expected"/"unknown" cells).

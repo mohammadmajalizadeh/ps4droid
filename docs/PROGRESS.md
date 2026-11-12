@@ -23,7 +23,21 @@ Last updated: 2026-11-12 (Phase 1 partly done).
 
 ## Decisions taken
 
-The Phase 0 recommendations are in force because the user said to proceed without changing them: FEXCore; Vulkan 1.3 floor; in-process bionic gated on E1; cherry-pick MIT bridge files from the existing fork; import into app-specific storage. Nothing built so far depends on any of them, so they can still be changed at no cost. Test devices: still unknown.
+The Phase 0 recommendations are in force because the user said to proceed without changing them: FEXCore; Vulkan 1.3 floor; in-process bionic gated on E1; cherry-pick MIT bridge files from the existing fork; import into app-specific storage. Nothing built so far depends on any of them, so they can still be changed at no cost. Test device: Nothing Phone (3a) Pro, see below. It is the only device, so 48-bit-versus-39-bit and Mali coverage remain open.
+
+## Test device
+
+Nothing Phone (3a) Pro (named by the user on 2026-11-12). From public spec sheets, not from the device:
+
+| Item | Value | Consequence |
+|---|---|---|
+| SoC | Snapdragon 7s Gen 3 (SM7635): 1x Cortex-A720 2.5 GHz, 3x A720 2.4 GHz, 4x A520 1.8 GHz | A mid-range chip. Fine for bring-up and homebrew (Phases 2-4). Commercial titles at playable speed are doubtful; the public reports for the existing port are from flagship SoCs. |
+| GPU | Adreno 810 (some spec sites say 710; the review and GPU databases say 810) | An 8xx-generation part: needs a Turnip build with Adreno 8xx support (reported as Mesa 26.0 and later). Stock-driver capabilities unknown until E4. |
+| RAM | 8 GB or 12 GB depending on variant | Decides how large the guest memory backing file can be (`ARCHITECTURE.md` A5). Variant not yet known. |
+| OS | Android 15 at launch (Nothing OS 3.1), updatable | API 35+, above our floor of 31. |
+| Address-space width, page size | unknown | `va_probe` answers both. |
+
+A static ARM64 build of `va_probe` (musl, no NDK needed) was produced with the stand-in compiler and handed to the user. It has not been executed on ARM64 by us. Standalone, it reports address-space width, page size, kernel and RAM; it does **not** show what the Android runtime maps into an app process, which needs the in-app run in Phase 2.
 
 ## Next steps, in order
 
