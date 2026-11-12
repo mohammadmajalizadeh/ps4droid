@@ -1,0 +1,44 @@
+From 8a93949efa4c1fb3bc7c9c30aa38787cf08e24e1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 12 Nov 2026 19:52:37 +0330
+Subject: [PATCH 4/4] kernel: generate UUIDs without libuuid on Android
+
+bionic does not ship libuuid. Build a version 4 UUID from arc4random_buf.
+The UUID logic was run on a Linux host; the Android branch itself has not
+been compiled with the NDK yet.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TgEuyX4ZtP7cc48S5vUZXK
+---
+ src/core/libraries/kernel/kernel.cpp | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/core/libraries/kernel/kernel.cpp b/src/core/libraries/kernel/kernel.cpp
+index 735f7d7..bf96eb4 100644
+--- a/src/core/libraries/kernel/kernel.cpp
++++ b/src/core/libraries/kernel/kernel.cpp
+@@ -32,6 +32,8 @@
+ 
+ #ifdef _WIN64
+ #include <Rpc.h>
++#elif defined(__ANDROID__)
++#include <stdlib.h>
+ #else
+ #include <uuid/uuid.h>
+ #endif
+@@ -183,6 +185,12 @@ s32 PS4_SYSV_ABI sceKernelUuidCreate(OrbisKernelUuid* orbisUuid) {
+     if (UuidCreate(&uuid) != RPC_S_OK) {
+         return ORBIS_KERNEL_ERROR_EFAULT;
+     }
++#elif defined(__ANDROID__)
++    // bionic has no libuuid. Build a random (version 4, RFC 4122 variant) UUID.
++    u8 uuid[16];
++    arc4random_buf(uuid, sizeof(uuid));
++    uuid[6] = (uuid[6] & 0x0F) | 0x40;
++    uuid[8] = (uuid[8] & 0x3F) | 0x80;
+ #else
+     uuid_t uuid;
+     uuid_generate(uuid);
+-- 
+2.43.0
+

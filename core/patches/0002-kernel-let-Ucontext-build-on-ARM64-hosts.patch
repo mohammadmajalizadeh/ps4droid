@@ -1,0 +1,43 @@
+From 66e74a94da128ab63eb0f8f7c31a7f2483172774 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 12 Nov 2026 19:52:37 +0330
+Subject: [PATCH 2/4] kernel: let Ucontext build on ARM64 hosts
+
+The host signal frame carries AArch64 registers, so guest register state
+cannot be copied from it. Record only the fault address until the CPU
+translator supplies guest state.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TgEuyX4ZtP7cc48S5vUZXK
+---
+ src/core/libraries/kernel/threads/exception.cpp | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/core/libraries/kernel/threads/exception.cpp b/src/core/libraries/kernel/threads/exception.cpp
+index 73d588f..e521c3a 100644
+--- a/src/core/libraries/kernel/threads/exception.cpp
++++ b/src/core/libraries/kernel/threads/exception.cpp
+@@ -102,6 +102,11 @@ Ucontext::Ucontext(siginfo_t const* inf, ucontext_t* raw_context) {
+     uc_mcontext.mc_rip = regs[REG_RIP];
+     uc_mcontext.mc_addr = reinterpret_cast<uint64_t>(inf->si_addr);
+ #endif
++#elif defined(ARCH_ARM64)
++    // The host context holds AArch64 registers, not the guest's x86-64 state. The guest
++    // register file has to come from the CPU translator; until that is wired up only the
++    // fault address is meaningful.
++    uc_mcontext.mc_addr = reinterpret_cast<uint64_t>(inf->si_addr);
+ #else
+ #error "ucontext_t conversion not implemented for current architecture."
+ #endif
+@@ -225,6 +230,8 @@ void Ucontext::SyncHostFromGuest() {
+     // regs[REG_CSGSFS] |= (greg_t{uc_mcontext.mc_gs} << 16);
+     regs[REG_RIP] = uc_mcontext.mc_rip;
+ #endif
++#elif defined(ARCH_ARM64)
++    // Guest state lives in the CPU translator, not in the host signal frame.
+ #else
+ #error "ucontext_t conversion not implemented for current architecture."
+ #endif
+-- 
+2.43.0
+

@@ -1,0 +1,64 @@
+From e2e8590cc171cdfe3abf7370687fc5e50cf962d4 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 12 Nov 2026 19:52:37 +0330
+Subject: [PATCH 3/4] aerolib: return-zero guest stub on non-x86 hosts
+
+GetStub emitted x86 host code with Xbyak that jumps into a host function.
+On other hosts resolve unresolved imports to a three-byte guest routine
+(xor eax, eax; ret) instead.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TgEuyX4ZtP7cc48S5vUZXK
+---
+ src/core/aerolib/stubs.cpp | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/src/core/aerolib/stubs.cpp b/src/core/aerolib/stubs.cpp
+index abcef8d..25c60fb 100644
+--- a/src/core/aerolib/stubs.cpp
++++ b/src/core/aerolib/stubs.cpp
+@@ -6,7 +6,10 @@
+ #include <string>
+ #include <vector>
+ 
++#include "common/arch.h"
++#ifdef ARCH_X86_64
+ #include <xbyak/xbyak.h>
++#endif
+ 
+ #include "common/logging/log.h"
+ #include "core/aerolib/aerolib.h"
+@@ -14,6 +17,23 @@
+ 
+ namespace Core::AeroLib {
+ 
++#ifndef ARCH_X86_64
++
++// Guest code for "xor eax, eax; ret". A stub cannot jump into host code on a non-x86 host, so
++// unresolved imports return zero without the per-call diagnostic.
++static constexpr u8 ReturnZeroStub[] = {0x31, 0xC0, 0xC3};
++
++u64 GetStub(const char* nid) {
++    if (const auto* entry = FindByNid(nid)) {
++        LOG_WARNING(Core, "Stub: {} (nid: {}) resolved to return-zero", entry->name, entry->nid);
++    } else {
++        LOG_WARNING(Core, "Stub: Unknown (nid: {}) resolved to return-zero", nid);
++    }
++    return reinterpret_cast<u64>(ReturnZeroStub);
++}
++
++#else
++
+ // Helper to provide stub implementations for missing functions
+ //
+ // This works by constructing a minimal trampoline for each new stub which then jumps to a common
+@@ -71,4 +91,6 @@ u64 GetStub(const char* nid) {
+     return reinterpret_cast<u64>(g_stub_entries.back().code->getCode());
+ }
+ 
++#endif
++
+ } // namespace Core::AeroLib
+-- 
+2.43.0
+

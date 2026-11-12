@@ -1,0 +1,94 @@
+From db7532b1459a8774b39443138e362792d97c4140 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 12 Nov 2026 19:52:37 +0330
+Subject: [PATCH 1/4] common: read fault PC and ESR from Linux AArch64 signal
+ frames
+
+GetRip, IsWriteError and IsExecuteError hit #error on Linux/Android arm64.
+Read pc from uc_mcontext and the syndrome from the esr_context record.
+Compiles for aarch64-linux-gnu; not yet exercised at run time.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TgEuyX4ZtP7cc48S5vUZXK
+---
+ src/common/signal_context.cpp | 39 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/src/common/signal_context.cpp b/src/common/signal_context.cpp
+index 874b6a4..1b4fdf4 100644
+--- a/src/common/signal_context.cpp
++++ b/src/common/signal_context.cpp
+@@ -11,10 +11,38 @@
+ #include <sys/ucontext.h>
+ #else
+ #include <sys/ucontext.h>
++#if defined(__linux__) && defined(ARCH_ARM64)
++#include <asm/sigcontext.h>
++#endif
+ #endif
+ 
+ namespace Common {
+ 
++#if defined(__linux__) && defined(ARCH_ARM64)
++// The kernel stores the exception syndrome in an esr_context record inside the reserved area
++// of the signal frame. Returns 0 if the record is absent.
++static u64 GetEsr(void* ctx) {
++    const auto& mcontext = static_cast<ucontext_t*>(ctx)->uc_mcontext;
++    const auto* base = reinterpret_cast<const u8*>(mcontext.__reserved);
++    size_t offset = 0;
++    while (offset + sizeof(_aarch64_ctx) <= sizeof(mcontext.__reserved)) {
++        const auto* head = reinterpret_cast<const _aarch64_ctx*>(base + offset);
++        if (head->magic == 0 || head->size < sizeof(_aarch64_ctx)) {
++            break;
++        }
++        if (head->magic == ESR_MAGIC) {
++            return reinterpret_cast<const esr_context*>(head)->esr;
++        }
++        offset += head->size;
++    }
++    return 0;
++}
++
++static constexpr u64 EsrExceptionClass(u64 esr) {
++    return (esr >> 26) & 0x3f;
++}
++#endif
++
+ void* GetRip(void* ctx) {
+ #if defined(_WIN32)
+     return (void*)((EXCEPTION_POINTERS*)ctx)->ContextRecord->Rip;
+@@ -26,6 +54,8 @@ void* GetRip(void* ctx) {
+     return (void*)((ucontext_t*)ctx)->uc_mcontext.mc_rip;
+ #elif defined(ARCH_X86_64)
+     return (void*)((ucontext_t*)ctx)->uc_mcontext.gregs[REG_RIP];
++#elif defined(__linux__) && defined(ARCH_ARM64)
++    return (void*)((ucontext_t*)ctx)->uc_mcontext.pc;
+ #else
+ #error "Unsupported architecture"
+ #endif
+@@ -42,6 +72,11 @@ bool IsWriteError(void* ctx) {
+     return ((ucontext_t*)ctx)->uc_mcontext.mc_err & 0x2;
+ #elif defined(ARCH_X86_64)
+     return ((ucontext_t*)ctx)->uc_mcontext.gregs[REG_ERR] & 0x2;
++#elif defined(__linux__) && defined(ARCH_ARM64)
++    // Data abort (EC 0x24 lower EL, 0x25 same EL) with the WnR bit set.
++    const u64 esr = GetEsr(ctx);
++    const u64 ec = EsrExceptionClass(esr);
++    return (ec == 0x24 || ec == 0x25) && (esr & 0x40);
+ #else
+ #error "Unsupported architecture"
+ #endif
+@@ -56,6 +91,10 @@ bool IsExecuteError(void* ctx) {
+     return ((ucontext_t*)ctx)->uc_mcontext.mc_err & 0x10;
+ #elif defined(ARCH_X86_64)
+     return ((ucontext_t*)ctx)->uc_mcontext.gregs[REG_ERR] & 0x10;
++#elif defined(__linux__) && defined(ARCH_ARM64)
++    // Instruction abort (EC 0x20 lower EL, 0x21 same EL).
++    const u64 ec = EsrExceptionClass(GetEsr(ctx));
++    return ec == 0x20 || ec == 0x21;
+ #else
+ #error "Unsupported architecture"
+ #endif
+-- 
+2.43.0
+
