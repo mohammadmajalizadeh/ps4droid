@@ -39,10 +39,25 @@ Nothing Phone (3a) Pro (named by the user on 2026-11-12). From public spec sheet
 
 A static ARM64 build of `va_probe` (musl, no NDK needed) was produced with the stand-in compiler and handed to the user. It has not been executed on ARM64 by us. Standalone, it reports address-space width, page size, kernel and RAM; it does **not** show what the Android runtime maps into an app process, which needs the in-app run in Phase 2.
 
+## Device facts measured on 2026-11-13
+
+Raw log: `docs/device-logs/2026-11-13-nothing-3a-pro-va_probe.txt`.
+
+| Item | Measured | Consequence |
+|---|---|---|
+| Model / OS | A059P, Android 17, kernel 6.1 (android14 GKI) | Far above API 31; nothing to change. |
+| RAM | 11.1 GiB visible (12 GB variant) | Full 8.4 GiB guest backing file is possible on paper but leaves ~3 GiB for Android and the app; start with a smaller default and measure lmkd behaviour. |
+| Page size | 4 KiB | No 16 KiB issues on this device (we still link for 16 KiB). |
+| User address space | **39-bit** (highest mappable `0x7ffffff000`, 512 GiB total) | Upstream user range (85 TiB) and the 1 TiB fallback both fail with ENOMEM. 192 GiB (`USER_MAX = 0x3FFFFFFFFF`) reserves fine. This confirms `ARCHITECTURE.md` A1 and the value the existing fork ships. |
+| System ranges | `system_reserved` (32 GiB) reserves whole; `system_managed` reserves from `0x1075000` onwards | The only occupant was the probe's own image: the static build is linked at `0x1000000`. An artifact of how the probe was built, not of Android. |
+| Vulkan driver | `ro.hardware.vulkan=adreno` (Qualcomm proprietary) | Capabilities still unknown (E4). |
+
+What this does **not** answer: the probe ran in the `shell` SELinux domain as a fresh process. An app process is forked from zygote and carries the Java runtime's mappings, which is exactly what A2/A3 worry about. That needs the in-app run (Phase 2). E1 is therefore half done.
+
 ## Next steps, in order
 
 1. Run `.github/workflows/android.yml` (or the NDK commands in `CLAUDE.md`) and record the real results in `STUBS.md`.
-2. Run `va_probe` on a 39-bit and a 48-bit device, standalone and inside an app process (E1).
+2. Run `va_probe` inside an app process (Phase 2 app) on the test device (E1, second half).
 3. Stage-0 host tools (`protoc`, `glslang`, font embedder) so the Android configure can generate sources (`STUBS.md` B3).
 4. NDK-built FFmpeg (`STUBS.md` B1).
 5. Full build and link of the core as a shared library; list undefined references.
@@ -51,7 +66,7 @@ A static ARM64 build of `va_probe` (musl, no NDK needed) was produced with the s
 
 | ID | Question | Status |
 |---|---|---|
-| E1 | Can the guest ranges be reserved inside an ART process on 39-bit and 48-bit devices? | Tool written and host-tested; not run on Android |
+| E1 | Can the guest ranges be reserved inside an ART process on 39-bit and 48-bit devices? | Standalone run on the 39-bit test device done (all three ranges fit with `USER_MAX = 0x3FFFFFFFFF`); in-app run pending; no 48-bit device |
 | E2 | Do our signal handlers coexist with ART's `libsigchain` and FEXCore? | Not started (Phase 3) |
 | E3 | Anonymous `PROT_EXEC` JIT mappings on Android 12–16 | Not started (Phase 3) |
 | E4 | Per-device Vulkan capability capture | Not started (Phase 2) |

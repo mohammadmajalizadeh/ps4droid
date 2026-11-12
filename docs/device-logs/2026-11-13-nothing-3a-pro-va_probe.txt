@@ -1,0 +1,33 @@
+# Nothing Phone (3a) Pro, model A059P, Android 17, ro.hardware.vulkan=adreno
+# Run as: adb shell /data/local/tmp/va_probe   (shell domain, NOT an app process)
+va_probe v2
+page_size: 4096
+kernel: 6.1.172-android14-11-g4538f521463f-ab16467005 aarch64
+meminfo: MemTotal:       11680596 kB
+overcommit_memory: unreadable
+highest_mappable: 0x7ffffff000 (39-bit user address space)
+total_mappings: 9
+lowest_mapping: 0x1000000 /data/local/tmp/va_probe
+
+[occupants of guest ranges]
+    000001000000-00000100e000 r--p /data/local/tmp/va_probe
+    00000101d000-000001049000 r-xp /data/local/tmp/va_probe
+    000001058000-00000105c000 rw-p /data/local/tmp/va_probe
+    00000106b000-00000106c000 rw-p /data/local/tmp/va_probe
+    00000106c000-000001075000 rw-p [anon]
+  system_managed: 5 existing mappings, 288 KiB occupied
+  system_reserved: 0 existing mappings, 0 KiB occupied
+  user (to 256 GiB): 0 existing mappings, 0 KiB occupied
+  largest free run in system_managed: 0x1075000 + 32751 MiB
+  free space starting at 0x400000: 12 MiB
+
+[reservation attempts, PROT_NONE + MAP_FIXED_NOREPLACE]
+  system_managed whole: FAILED errno=File exists
+  system_managed largest free run: ok
+  system_reserved whole: ok
+  user 0x1000000000-0x54ffffffffff (86976 GiB): FAILED errno=Out of memory
+  user 0x1000000000-0xffffffffff (960 GiB): FAILED errno=Out of memory
+  user 0x1000000000-0x3fffffffff (192 GiB): ok
+  user 0x1000000000-0x1fffffffff (64 GiB): ok
+
+recommended_user_max: 0x3fffffffff
