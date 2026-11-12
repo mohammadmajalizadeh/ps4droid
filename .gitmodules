@@ -1,0 +1,5 @@
+[submodule "core/shadPS4"]
+	path = core/shadPS4
+	url = https://github.com/shadps4-emu/shadPS4
+	ignore = all
+	shallow = true
