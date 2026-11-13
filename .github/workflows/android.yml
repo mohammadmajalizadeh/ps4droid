@@ -80,6 +80,12 @@ jobs:
         run: |
           cut -f1 build/sweep/results.tsv | sort | uniq -c
           grep FAIL build/sweep/results.tsv || true
+          # Error lines of every failing unit, so the log alone is enough to diagnose.
+          for f in build/sweep/*.log; do
+            [ -e "$f" ] || continue
+            echo "=== $(head -1 "$f")"
+            grep -E "error|warning: .*-W#warnings" "$f" | head -12
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -10,7 +10,9 @@ Writes <out_dir>/results.tsv (status, seconds, file) and one .log per failing fi
 import json, os, shlex, subprocess, sys, time, hashlib
 from concurrent.futures import ThreadPoolExecutor
 
-build, out = sys.argv[1], sys.argv[2]
+# Absolute paths: each compile runs in its own build directory, so a relative
+# output path would point somewhere that does not exist.
+build, out = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
 jobs = int(sys.argv[3]) if len(sys.argv) > 3 else 2
 os.makedirs(out, exist_ok=True)
 cmds = json.load(open(os.path.join(build, "compile_commands.json")))
