@@ -1,0 +1,69 @@
+From b0b3819bb84a25be16c098974b9e24a7e25d2cf7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 13 Nov 2026 04:02:34 +0330
+Subject: [PATCH] kernel: convert native thread handles to pthread_t with
+ bit_cast
+
+bionic defines pthread_t as long, so reinterpret_cast from uintptr_t is
+ill-formed there (glibc's unsigned long happened to be the same type).
+std::bit_cast works for integer and pointer pthread_t of the same size.
+Only the generic POSIX branches change; Apple and Windows paths are left.
+Found by the NDK r27 compile sweep (run 43334836306).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TgEuyX4ZtP7cc48S5vUZXK
+---
+ src/core/libraries/kernel/threads/pthread.cpp | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/src/core/libraries/kernel/threads/pthread.cpp b/src/core/libraries/kernel/threads/pthread.cpp
+index 8ed90d2..371ebef 100644
+--- a/src/core/libraries/kernel/threads/pthread.cpp
++++ b/src/core/libraries/kernel/threads/pthread.cpp
+@@ -6,6 +6,7 @@
+ #ifdef _WIN32
+ #include "common/ntapi.h"
+ #else
++#include <bit>
+ #include <csignal>
+ #include <pthread.h>
+ #ifdef __APPLE__
+@@ -697,7 +698,7 @@ void InterruptPthreadForCancellation(Pthread* thread) noexcept {
+         LOG_ERROR(Lib_Kernel, "Failed to deliver pthread cancellation APC: {:#x}", result);
+     }
+ #else
+-    const auto native_thread = reinterpret_cast<pthread_t>(thread->native_thr->GetHandle());
++    const auto native_thread = std::bit_cast<pthread_t>(thread->native_thr->GetHandle());
+     const int result = pthread_kill(native_thread, HostPthreadCancelSignal());
+     if (result != 0) {
+         LOG_ERROR(Lib_Kernel, "Failed to deliver pthread cancellation signal: {}", result);
+@@ -965,7 +966,7 @@ void Pthread::WakeForSignal() {
+                                  ExceptionHandler, nullptr, nullptr, nullptr);
+     ASSERT(res == 0);
+ #else
+-    pthread_kill(reinterpret_cast<pthread_t>(native_thr->GetHandle()), SIGUSR1);
++    pthread_kill(std::bit_cast<pthread_t>(native_thr->GetHandle()), SIGUSR1);
+ #endif
+ }
+ 
+@@ -1226,7 +1227,7 @@ int PS4_SYSV_ABI posix_pthread_suspend_user_context_np(PthreadT thread) {
+     }
+ #else
+     if (thread->native_thr && thread != g_curthread) {
+-        pthread_t pthr = reinterpret_cast<pthread_t>(thread->native_thr->GetHandle());
++        pthread_t pthr = std::bit_cast<pthread_t>(thread->native_thr->GetHandle());
+         if (pthr) {
+             pthread_kill(pthr, SIGSLEEP);
+             for (int i = 0; i < 1000 && !thread->is_suspended_in_signal; ++i) {
+@@ -1267,7 +1268,7 @@ int PS4_SYSV_ABI posix_pthread_resume_user_context_np(PthreadT thread) {
+     }
+ #else
+     if (thread->native_thr && thread != g_curthread) {
+-        pthread_t pthr = reinterpret_cast<pthread_t>(thread->native_thr->GetHandle());
++        pthread_t pthr = std::bit_cast<pthread_t>(thread->native_thr->GetHandle());
+         if (pthr) {
+             pthread_kill(pthr, SIGSLEEP);
+         }
+-- 
+2.43.0
+

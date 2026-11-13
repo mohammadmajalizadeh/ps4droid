@@ -9,7 +9,7 @@ on:
   pull_request:
 
 env:
-  NDK_VERSION: 27.2.12479018 # r27c
+  NDK_VERSION: 29.0.14206865 # r29: first NDK whose libc++ has std::jthread/stop_token/atomic_ref
   ANDROID_PLATFORM: android-31
 
 jobs:
@@ -57,7 +57,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ndk_major: [27, 28, 29]
+        # r27/r28 lack C++20 library features shadPS4 uses (run 43337640523); keep r29 only.
+        ndk_major: [29]
     steps:
       - uses: actions/checkout@v4
         with:

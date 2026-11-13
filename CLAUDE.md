@@ -60,7 +60,7 @@ cmake -S core/shadPS4 -B build/standin -G Ninja \
 python3 tools/standin/syntax_check.py build/standin build/sweep 2
 ```
 
-**Not yet run anywhere** (no NDK was available; see `docs/STUBS.md`):
+Run in GitHub Actions on every push (`.github/workflows/android.yml`); the NDK is not available in the Claude sandbox:
 
 ```sh
 # our code for Android
@@ -81,7 +81,7 @@ python3 -m ziglang c++ -target aarch64-linux-musl -static -std=c++20 -O1 -DVA_PR
 cmake -S . -B build/android-core -G Ninja -DPS4DROID_BUILD_CORE=ON  # plus the toolchain flags above
 ```
 
-Toolchain: NDK r27c (27.2.12479018), CMake 3.24+, Ninja, JDK 17, API 31 minimum, `-Wl,-z,max-page-size=16384` on every shared object (set in the top-level `CMakeLists.txt`).
+Toolchain: **NDK r29 (29.0.14206865)**, required: r27 and r28 lack `std::jthread`, `std::stop_token` and `std::atomic_ref`, which shadPS4 uses (measured in CI run 43337640523), CMake 3.24+, Ninja, JDK 17, API 31 minimum, `-Wl,-z,max-page-size=16384` on every shared object (set in the top-level `CMakeLists.txt`).
 
 ## The submodule and the patch series
 
