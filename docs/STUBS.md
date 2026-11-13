@@ -1,10 +1,37 @@
 # Stubs and compile status
 
-Last updated: 2026-11-12 (Phase 1, partial).
+Last updated: 2026-11-13 (Phase 1, real NDK results).
 
-## How this was measured, and what it does not show
+## Real NDK compile sweep (GitHub Actions)
 
-The Android NDK could not be downloaded in the environment where this work was done (`dl.google.com` is blocked there). Instead, shadPS4 at `09f84a0e` was configured for **generic AArch64 Linux (glibc)** with a stand-in cross-compiler (zig 0.17.1, which is clang 22.1.8) and every translation unit under `src/` was compiled at `-O0` with the objects discarded:
+Every translation unit under shadPS4 `src/` (437 with the Android configure, including 6 generated font sources) is compiled at `-O0` with objects discarded, by `tools/standin/syntax_check.py`, in the `ndk-core` job. Run 43337640523, before patch 0006:
+
+| NDK | clang | Compiled | Failed | Notes |
+|---|---|---|---|---|
+| r27 27.3.13750724 | 18.0.4 | 378 | 59 | libc++ lacks `std::jthread`, `std::stop_token`, `std::atomic_ref` (~40 units) |
+| r28 28.2.13676358 | 19.0.1 | 378 | 59 | same as r27 |
+| **r29 29.0.14206865** | **21.0.0** | **416** | **21** | all C++20 library gaps gone |
+
+**Decision: the project requires NDK r29.** Avoiding those three features would mean patching dozens of upstream files with changes upstream would not take; the brief allows "NDK r27+".
+
+r29's 21 failures:
+
+| Count | Cause | Status |
+|---|---|---|
+| 4 errors in 1 unit | `pthread.cpp`: `reinterpret_cast<pthread_t>(uintptr_t)` is ill-formed because bionic's `pthread_t` is `long` | Patch 0006 |
+| 8 | `shadnet.pb.h` not generated | Host-tools stage (B3) |
+| 5 | `video_core/host_shaders/*.h` not generated | B3 |
+| 1 + 6 | ImGui font sources (`font_data.cpp` and the 6 `*.ttf.g.cpp` it includes) not generated | B3 |
+
+The `pthread_t` unit is the only real source failure under the NDK that the generic-Linux stand-in did not show: on glibc `pthread_t` is `unsigned long`, the same type as `uintptr_t`. Everything else the NDK reported is either a toolchain-version gap or a missing generated file.
+
+**After patch 0006 (run 43339183864, NDK r29): 417 compiled, 20 failed, and all 20 failures are missing generated sources** (8 `shadnet.pb.h`, 5 host shaders, 1 + 6 fonts). No real source failures remain in the compile sweep.
+
+What the sweep still does not prove: linking, third-party libraries building for Android, and anything at run time.
+
+## Earlier stand-in sweep (kept for reference)
+
+Before the NDK was available, shadPS4 was configured for generic AArch64 Linux (glibc) with zig 0.17.1 (clang 22.1.8):
 
 ```sh
 cmake -S core/shadPS4 -B build/standin -G Ninja \
@@ -15,27 +42,7 @@ cmake -S core/shadPS4 -B build/standin -G Ninja \
 python3 tools/standin/syntax_check.py build/standin build/sweep 2
 ```
 
-What that proves: which source files have **CPU-architecture** problems on ARM64.
-
-What it does not prove:
-
-- Nothing about **bionic** (missing libc functions, headers, `pthread_*_np`, etc.).
-- Nothing about the **NDK's compiler**. NDK r27 ships clang 18; the stand-in is clang 22, so C++23 library features could still be missing under the NDK.
-- Nothing about **linking**. No objects were kept and third-party libraries were not built, so undefined references are unknown.
-- Nothing at **run time**. No ARM64 code was executed.
-
-The `ndk-core` job in `.github/workflows/android.yml` repeats the same sweep with the real NDK. That workflow has not been run.
-
-## Result: 430 translation units
-
-| Outcome | Count |
-|---|---|
-| Compiled unmodified | 409 |
-| Failed: real source problem | 4 |
-| Failed: file generated during a normal build was absent | 16 |
-| Failed: host header absent from the stand-in sysroot | 1 |
-
-After the patches in `core/patches/`, the 4 real failures compile (3 confirmed with the stand-in; 1 is an Android-only branch, see S4).
+Result over 430 units: 409 compiled unmodified, 4 real source problems (patched, below), 16 generated files absent, 1 X11 header absent.
 
 ### Real source problems (patched)
 
@@ -45,6 +52,7 @@ After the patches in `core/patches/`, the 4 real failures compile (3 confirmed w
 | S2 | `src/core/libraries/kernel/threads/exception.cpp` | `#error "ucontext_t conversion not implemented"` in `Ucontext::Ucontext` and `Ucontext::SyncHostFromGuest` | 0002 | **Stub.** Guest registers are left zero; only the fault address is filled. Guest exception handlers would see an empty context. | Phase 3 (state comes from the translator) |
 | S3 | `src/core/aerolib/stubs.cpp` | Uses Xbyak 64-bit registers to emit x86 host code that jumps to a host function | 0003 | **Reduced behaviour.** Unresolved imports resolve to a 3-byte guest routine (`xor eax, eax; ret`). The per-call "stub called" log is lost; one warning is logged at resolve time instead. | Phase 3 (use the HLE call bridge so the log returns) |
 | S4 | `src/core/libraries/kernel/kernel.cpp` | Includes `<uuid/uuid.h>`; bionic has no libuuid | 0004 | Real implementation under `__ANDROID__`: version 4 UUID from `arc4random_buf`. The logic was run on a Linux host. The `__ANDROID__` branch **has not been compiled** (the stand-in is not Android). | n/a (keep); confirm in the NDK job |
+| S5 | `src/core/libraries/kernel/threads/pthread.cpp` | `reinterpret_cast<pthread_t>(uintptr_t)` at 4 sites is ill-formed on bionic (`pthread_t` is `long`) | 0006 | Real fix: `std::bit_cast`, generic POSIX branches only. Round-trip checked on host for both `long` and `unsigned long`; compiles with the stand-in. Confirmed by the NDK r29 sweep (run 43339183864). | n/a (keep) |
 
 ### Not source problems: generated files that a full build would create
 
@@ -91,7 +99,6 @@ These are not compiled on ARM64 at all (`CMakeLists.txt:1037-1042`), so the swee
 
 ## Open before Phase 1 can be called complete
 
-1. Run the sweep with the real NDK r27 (CI job or a developer machine) and add any bionic failures here.
-2. Host-tools stage (B3), then a full build including third-party libraries.
-3. A link step, to surface undefined references from the excluded components.
-4. NDK-built FFmpeg (B1).
+1. Host-tools stage (B3), then a full build including third-party libraries.
+2. A link step, to surface undefined references from the excluded components.
+3. NDK-built FFmpeg (B1).

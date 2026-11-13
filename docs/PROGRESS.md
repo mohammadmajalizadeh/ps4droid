@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-11-12 (Phase 1 partly done).
+Last updated: 2026-11-13 (Phase 1: compile sweep clean under the real NDK).
 
 ## Done
 
@@ -18,8 +18,7 @@ Last updated: 2026-11-12 (Phase 1 partly done).
 
 ## Blocked
 
-- **Android NDK unavailable in the working environment** (`dl.google.com` denied by network policy, still denied after the user said it was allowed). Blocks: the real `arm64-v8a` build, every bionic finding, the link step, and running `va_probe` on a device.
-- No Android device or emulator is attached, so E1–E4 are all still open.
+- The NDK is still unavailable inside the Claude sandbox; all NDK builds run in GitHub Actions instead. No longer blocking.
 
 ## Decisions taken
 
@@ -64,13 +63,24 @@ What this does **not** answer: the probe ran in the `shell` SELinux domain as a 
 
 The NDK installs and works on GitHub's runners, so the sandbox's download block no longer blocks the project.
 
+## Real NDK compile sweep (2026-11-13)
+
+GitHub repository: `mohammadmajalizadeh/ps4droid`; CI runs on every push.
+
+| Run | NDK | Compiled / failed | Change |
+|---|---|---|---|
+| 43334836306 | r27 | 378 / 59 | first valid sweep |
+| 43337640523 | r27, r28, r29 | 378/59, 378/59, 416/21 | r29 supplies `std::jthread`, `std::stop_token`, `std::atomic_ref` |
+| 43339183864 | r29 + patch 0006 | **417 / 20** | all 20 remaining failures are missing generated sources |
+
+The project now requires NDK r29 (29.0.14206865). Details in `STUBS.md`.
+
 ## Next steps, in order
 
-1. Re-run the workflow with patch 0005 and record the NDK compile sweep in `STUBS.md`.
-2. Run `va_probe` inside an app process (Phase 2 app) on the test device (E1, second half).
-3. Stage-0 host tools (`protoc`, `glslang`, font embedder) so the Android configure can generate sources (`STUBS.md` B3).
-4. NDK-built FFmpeg (`STUBS.md` B1).
-5. Full build and link of the core as a shared library; list undefined references.
+1. Host-tools stage: build `protoc`, `glslang` and the ImGui font embedder for the build machine and use them in the Android cross build (`STUBS.md` B3). That clears the last 20 compile failures.
+2. NDK-built FFmpeg (`STUBS.md` B1).
+3. Full build and link of the core as a shared library; list undefined references.
+4. Phase 2 app: load the native library, clear the screen with Vulkan, capture the Vulkan capabilities (E4), and run `va_probe` inside the app process (E1, second half).
 
 ## Open experiments
 
