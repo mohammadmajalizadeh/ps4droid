@@ -50,10 +50,14 @@ jobs:
           path: build/android-arm64/platform/android/va_probe
 
   ndk-core:
-    # Expected to fail until the Phase 1 patch series is complete on the real NDK.
-    # The compile sweep log is the deliverable; see docs/STUBS.md.
+    # Compile sweep of shadPS4 src/ with each NDK major version. The sweep log is the
+    # deliverable (see docs/STUBS.md); failing units do not fail the job.
     runs-on: ubuntu-24.04
     continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        ndk_major: [27, 28, 29]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,10 +66,16 @@ jobs:
         run: tools/fetch_core.sh
       - name: Apply patch series
         run: tools/apply_patches.sh
-      - name: Install NDK
+      - name: Install newest NDK of this major version
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          sdk="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          ver=$("$sdk" --list 2>/dev/null | grep -oE "ndk;${{ matrix.ndk_major }}\.[0-9.]+" \
+                | sed 's/ndk;//' | grep -v rc | sort -uV | tail -1)
+          [ -n "$ver" ] || { echo "no NDK ${{ matrix.ndk_major }} available"; exit 1; }
+          echo "Selected NDK $ver"
+          yes | "$sdk" "ndk;$ver" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ver" >> "$GITHUB_ENV"
+          "$ANDROID_HOME/ndk/$ver/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version | head -1
       - name: Configure core (arm64-v8a)
         run: |
           cmake -S . -B build/android-core -G Ninja \
@@ -89,5 +99,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ndk-compile-sweep
+          name: ndk-compile-sweep-r${{ matrix.ndk_major }}
           path: build/sweep
