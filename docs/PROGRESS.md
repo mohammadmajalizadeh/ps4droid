@@ -54,9 +54,19 @@ Raw log: `docs/device-logs/2026-11-13-nothing-3a-pro-va_probe.txt`.
 
 What this does **not** answer: the probe ran in the `shell` SELinux domain as a fresh process. An app process is forked from zygote and carries the Java runtime's mappings, which is exactly what A2/A3 worry about. That needs the in-app run (Phase 2). E1 is therefore half done.
 
+## First GitHub Actions run (2026-11-12, run 43332753412, commit dbf772b)
+
+| Job | Result | What it shows |
+|---|---|---|
+| host-tests | pass | probe test passes on ubuntu-24.04 |
+| ndk-platform | pass | **First real NDK r27c build.** `va_probe` built for arm64-v8a, API 31; all four LOAD segments 16 KiB aligned (`0x4000`) |
+| ndk-core | fail at configure | `src/imgui/renderer/CMakeLists.txt:6` used `CMAKE_SOURCE_DIR`, which is our wrapper, not shadPS4. Fixed in patch 0005; configure through the wrapper then verified with the stand-in toolchain. NDK re-run pending. |
+
+The NDK installs and works on GitHub's runners, so the sandbox's download block no longer blocks the project.
+
 ## Next steps, in order
 
-1. Run `.github/workflows/android.yml` (or the NDK commands in `CLAUDE.md`) and record the real results in `STUBS.md`.
+1. Re-run the workflow with patch 0005 and record the NDK compile sweep in `STUBS.md`.
 2. Run `va_probe` inside an app process (Phase 2 app) on the test device (E1, second half).
 3. Stage-0 host tools (`protoc`, `glslang`, font embedder) so the Android configure can generate sources (`STUBS.md` B3).
 4. NDK-built FFmpeg (`STUBS.md` B1).

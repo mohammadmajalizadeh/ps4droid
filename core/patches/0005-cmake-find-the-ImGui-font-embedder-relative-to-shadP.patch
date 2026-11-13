@@ -1,0 +1,33 @@
+From 34bf520d3c98014775935fde589debef11482f55 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 13 Nov 2026 03:32:39 +0330
+Subject: [PATCH] cmake: find the ImGui font embedder relative to shadPS4, not
+ the top level
+
+CMAKE_SOURCE_DIR is the outermost project. When shadPS4 is built with
+add_subdirectory from another project, externals/imgui is not there and
+configure fails. shadPS4_SOURCE_DIR always points at this repository.
+Found by the first NDK configure on GitHub Actions.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01TgEuyX4ZtP7cc48S5vUZXK
+---
+ src/imgui/renderer/CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/imgui/renderer/CMakeLists.txt b/src/imgui/renderer/CMakeLists.txt
+index 46aa446..d53081f 100644
+--- a/src/imgui/renderer/CMakeLists.txt
++++ b/src/imgui/renderer/CMakeLists.txt
+@@ -3,7 +3,7 @@
+ 
+ project(ImGui_Resources)
+ 
+-add_executable(Dear_ImGui_FontEmbed ${CMAKE_SOURCE_DIR}/externals/imgui/misc/fonts/binary_to_compressed_c.cpp)
++add_executable(Dear_ImGui_FontEmbed ${shadPS4_SOURCE_DIR}/externals/imgui/misc/fonts/binary_to_compressed_c.cpp)
+ 
+ set(FONT_LIST
+     NotoSansArabic-Regular.ttf
+-- 
+2.43.0
+
